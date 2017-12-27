@@ -16,3 +16,4 @@ msvc/*
 opencv
 target/*
 ZBar
+.vscode

@@ -97,7 +97,8 @@ namespace firesight {
        * @param show matched regions. Default is CIRCLE_SHOW_NONE
        */
       void setShowCircles(int show);
-
+      void setThickness(int thickness);
+      
       void scan(Mat &matRGB, vector<Circle> &circles);
       
       void setFilterParams( int d, double sigmaColor, double sigmaSpace);
@@ -105,6 +106,7 @@ namespace firesight {
 
     private:
       int _showCircles;
+      int _thickness;
       int minDiam;
       int maxDiam;
       vector<Circle> circles;
@@ -225,15 +227,20 @@ namespace firesight {
       bool apply_convertTo(json_t *pStage, json_t *pStageModel, Model &model);
       bool apply_cout(json_t *pStage, json_t *pStageModel, Model &model);
       bool apply_crop(json_t *pStage, json_t *pStageModel, Model &model);
+      bool apply_createMarkTemplate(json_t *pStage, json_t *pStageModel, Model &model);
       bool apply_cvtColor(json_t *pStage, json_t *pStageModel, Model &model);
       bool apply_dft(json_t *pStage, json_t *pStageModel, Model &model);
       bool apply_dftSpectrum(json_t *pStage, json_t *pStageModel, Model &model);
       bool apply_dilate(json_t *pStage, json_t *pStageModel, Model &model);
       bool apply_drawKeypoints(json_t *pStage, json_t *pStageModel, Model &model);
+      bool apply_drawCircles(json_t *pStage, json_t *pStageModel, Model &model);
+      bool apply_drawContours(json_t *pStage, json_t *pStageModel, Model &model);      
       bool apply_drawRects(json_t *pStage, json_t *pStageModel, Model &model);
       bool apply_equalizeHist(json_t *pStage, json_t *pStageModel, Model &model);
       bool apply_erode(json_t *pStage, json_t *pStageModel, Model &model);
+      bool apply_findContours(json_t *pStage, json_t *pStageModel, Model &model);      
       bool apply_FireSight(json_t *pStage, json_t *pStageModel, Model &model);
+      bool apply_GaussianBlur(json_t *pStage, json_t *pStageModel, Model &model);
       bool apply_HoleRecognizer(json_t *pStage, json_t *pStageModel, Model &model);
       bool apply_HoughCircles(json_t *pStage, json_t *pStageModel, Model &model);
       bool apply_points2resolution_RANSAC(json_t *pStage, json_t *pStageModel, Model &model);

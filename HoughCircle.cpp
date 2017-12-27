@@ -40,7 +40,8 @@ string Circle::asJson() {
 HoughCircle::HoughCircle(int minDiameter, int maxDiameter) {
 	minDiam = minDiameter;
 	maxDiam = maxDiameter;
-	_showCircles = CIRCLE_SHOW_NONE;
+    _showCircles = CIRCLE_SHOW_NONE;
+    _thickness = 3;
 	LOGTRACE2("HoughCircle() (maxDiam:%d minDiam:%d)", maxDiam, minDiam);
 }
 
@@ -59,6 +60,10 @@ void HoughCircle::setHoughParams(double dp, double minDist, double param1, doubl
 
 void HoughCircle::setShowCircles(int show) {
   _showCircles = show;
+}
+
+void HoughCircle::setThickness(int thickness) {
+    _thickness = thickness;
 }
 
 void HoughCircle::scan(Mat &image, vector<Circle> &circles) {
@@ -91,7 +96,7 @@ void HoughCircle::show(Mat & image, vector<Circle> circles) {
       // circle center
       circle( image, center, 3, Scalar(0,255,0), -1, 8, 0 );
       // circle outline
-      circle( image, center, radius, Scalar(0,0,255), 3, 8, 0 );
+      circle( image, center, radius, Scalar(0,0,255), _thickness, 8, 0 );
    }
 
 }

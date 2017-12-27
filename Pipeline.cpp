@@ -66,6 +66,71 @@ bool Pipeline::apply_model(json_t *pStage, json_t *pStageModel, Model &model) {
 
     return stageOK("apply_model(%s) %s", errMsg, pStage, pStageModel);
 }
+bool Pipeline::apply_findContours(json_t *pStage, json_t *pStageModel, Model &model) {
+    int minVal = jo_int(pStage, "minArea", 1, model.argMap);
+    int maxVal = jo_int(pStage, "maxArea", 255, model.argMap);
+
+    string  modeStr = jo_string(pStage, "mode", "CV_RETR_LIST", model.argMap);
+    string  methodStr = jo_string(pStage, "method", "CV_CHAIN_APPROX_NONE", model.argMap);
+    int mode, method;
+
+    const char *errMsg = NULL;    
+
+    if (!errMsg) {
+        if (modeStr.compare("CV_RETR_EXTERNAL") == 0) {
+            mode = CV_RETR_EXTERNAL;
+        } else if (modeStr.compare("CV_RETR_LIST") == 0) {
+            mode = CV_RETR_LIST;
+        } else if (modeStr.compare("CV_RETR_CCOMP") == 0) {
+            mode = CV_RETR_CCOMP;
+        } else if (modeStr.compare("CV_RETR_TREE") == 0) {
+            mode = CV_RETR_TREE;
+        } else if (modeStr.compare("CV_RETR_FLOODFILL") == 0) {
+            mode = CV_RETR_FLOODFILL;
+        } else {
+            errMsg = "Expected modeStr: CV_RETR_EXTERNAL, CV_RETR_LIST, CV_RETR_CCOMP, CV_RETR_TREE, CV_RETR_FLOODFILL";
+        }
+    }
+
+    if (!errMsg) {
+        if (methodStr.compare("CV_CHAIN_CODE") == 0) {
+            method = CV_CHAIN_CODE;
+        } else if (methodStr.compare("CV_CHAIN_APPROX_NONE") == 0) {
+            method = CV_CHAIN_APPROX_NONE;
+        } else if (methodStr.compare("CV_CHAIN_APPROX_SIMPLE") == 0) {
+            method = CV_CHAIN_APPROX_SIMPLE;
+        } else if (methodStr.compare("CV_CHAIN_APPROX_TC89_L1") == 0) {
+            method = CV_CHAIN_APPROX_TC89_L1;
+        } else if (methodStr.compare("CV_CHAIN_APPROX_TC89_KCOS") == 0) {
+            method = CV_CHAIN_APPROX_TC89_KCOS;
+        } else if (methodStr.compare("CV_LINK_RUNS") == 0) {
+            method = CV_LINK_RUNS;
+        } else {
+            errMsg = "Expected methodStr: CV_CHAIN_CODE, CV_CHAIN_APPROX_NONE, CV_CHAIN_APPROX_SIMPLE, CV_CHAIN_APPROX_TC89_L1, CV_CHAIN_APPROX_TC89_KCOS, CV_LINK_RUNS";
+        }
+    }
+    if (!errMsg) {
+        vector<vector<Point> > contours;  
+        vector<Vec4i> hierarchy;  
+        findContours(model.image, contours, hierarchy, mode, method);
+        json_t *contours_json = json_array();
+        json_object_set(pStageModel, "contours", contours_json);
+        for (size_t i = 0; i < contours.size(); i++) {
+            double area = contourArea(contours[i]);
+            if (area < minVal || area > maxVal) continue;
+            json_t *pContour = json_array();
+            for (size_t j = 0; j < contours[i].size(); j++) {
+                json_t* pPoint = json_object();
+                json_object_set(pPoint, "x", json_integer(contours[i][j].x));
+                json_object_set(pPoint, "y", json_integer(contours[i][j].y));
+                json_array_append(pContour, pPoint);
+            }
+            json_array_append(contours_json, pContour);
+        }
+    }
+
+    return stageOK("apply_findContours(%s) %s", errMsg, pStage, pStageModel);
+}
 
 bool Pipeline::apply_FireSight(json_t *pStage, json_t *pStageModel, Model &model) {
     json_t *pFireSight = json_object();
@@ -747,6 +812,33 @@ bool Pipeline::apply_crop(json_t *pStage, json_t *pStageModel, Model &model) {
     return stageOK("apply_crop(%s) %s", errMsg.c_str(), pStage, pStageModel);
 }
 
+bool Pipeline::apply_createMarkTemplate(json_t *pStage, json_t *pStageModel, Model &model) {
+    string path = jo_string(pStage, "path");
+    bool is_circle = jo_bool(pStage, "circle", true, model.argMap);
+    int size = jo_int(pStage, "size", SHRT_MAX, model.argMap);
+    bool white = jo_bool(pStage, "white", true, model.argMap);
+    
+    const char *errMsg = NULL;
+
+    uint8_t background_color = white ? 0 : UCHAR_MAX;
+    uint8_t color = white ? UCHAR_MAX : 0;
+    
+    Mat image(size, size, CV_8UC1, Scalar(is_circle ? background_color : color));
+    if (is_circle) {
+        float radius = size / 2.0;
+        circle(image, Point(radius, radius), radius, Scalar(color), -1, 8, 1);
+    }
+
+    if (path.empty()) {
+        errMsg = "Expected path for imwrite";
+    } else {
+        bool result = imwrite(path.c_str(), image);
+        json_object_set(pStageModel, "result", json_boolean(result));
+    }
+
+    return stageOK("apply_createMarkTemplate(%s) %s", errMsg, pStage, pStageModel);
+}
+
 #ifdef LGPL2_1
 bool Pipeline::apply_qrdecode(json_t *pStage, json_t *pStageModel, Model &model) {
     validateImage(model.image);
@@ -779,6 +871,134 @@ bool Pipeline::apply_qrdecode(json_t *pStage, json_t *pStageModel, Model &model)
     return stageOK("apply_qrdecode(%s) %s", errMsg, pStage, pStageModel);
 }
 #endif // LGPL2_1
+
+
+bool Pipeline::apply_drawCircles(json_t *pStage, json_t *pStageModel, Model &model) {
+    const char *errMsg = NULL;
+    Scalar color = jo_Scalar(pStage, "color", Scalar(-1,-1,-1,255), model.argMap);
+    int thickness = jo_int(pStage, "thickness", 2, model.argMap);
+    int lineType = jo_int(pStage, "lineType", 8, model.argMap);
+    Scalar fill = jo_Scalar(pStage, "fill", Scalar::all(-1), model.argMap);
+    int shift = jo_int(pStage, "shift", 0, model.argMap);
+    
+    string circlesModelName = jo_string(pStage, "model", "", model.argMap);
+    json_t *pCirclesModel = json_object_get(model.getJson(false), circlesModelName.c_str());
+
+    if (circlesModelName.empty()) {
+        errMsg = "model: expected name of stage with circles";
+    } else if (!json_is_object(pCirclesModel)) {
+        errMsg = "Named stage is not in model";
+    }
+
+    if (shift < 0) {
+        errMsg = "Expected shift>=0";
+    }
+
+    json_t *pCircles = NULL;
+    if (!errMsg) {
+        pCircles = json_object_get(pCirclesModel, "circles");
+        if (!json_is_array(pCircles)) {
+            errMsg = "Expected array of circles";
+        }
+    }
+
+    if (!errMsg) {
+        if (model.image.channels() == 1) {
+            LOGTRACE("Converting grayscale image to color image");
+            cvtColor(model.image, model.image, CV_GRAY2BGR, 0);
+        }
+        size_t index;
+        json_t *pCircle;
+        Point2f vertices[4];
+        int blue = (int)color[0];
+        int green = (int)color[1];
+        int red = (int)color[2];
+        bool changeColor = red == -1 && green == -1 && blue == -1;
+
+        json_array_foreach(pCircles, index, pCircle) {
+            int x = jo_int(pCircle, "x", SHRT_MAX, model.argMap);
+            int y = jo_int(pCircle, "y", SHRT_MAX, model.argMap);
+            Point center(x, y);
+            int radius = jo_int(pCircle, "radius", SHRT_MAX, model.argMap);
+            Scalar circleColor = color;
+            if (changeColor) {
+                red = (index & 1) ? 0 : 255;
+                green = (index & 2) ? 128 : 192;
+                blue = (index & 1) ? 255 : 0;
+                circleColor = Scalar(blue, green, red, 255);
+            }
+            circleColor = jo_Scalar(pCircle, "color", circleColor, model.argMap);
+            if (x == SHRT_MAX || y == SHRT_MAX || radius == SHRT_MAX) {
+                LOGERROR("apply_drawCircles() x, y, radius are required values");
+                break;
+            }
+            if (circleColor[3] != 0) {	// alpha=0 implies non-display
+                if (thickness) {
+                    circle(model.image, center, radius, circleColor, thickness, lineType, shift);
+                }
+                if (thickness >= 0) {
+                    int outThickness = thickness/2;
+                    int inThickness = (int)(thickness - outThickness);
+                    if (fill[0] >= 0) {
+                        circle(model.image, center, radius-inThickness, fill, -1, lineType, shift);
+                    }
+                }
+            }
+        }
+    }
+
+    return stageOK("apply_drawCircles(%s) %s", errMsg, pStage, pStageModel);
+}
+
+
+bool Pipeline::apply_drawContours(json_t *pStage, json_t *pStageModel, Model &model) {
+    const char *errMsg = NULL;
+    Scalar color = jo_Scalar(pStage, "color", Scalar(255,255,255,255), model.argMap);
+    int index = jo_int(pStage, "index", -1, model.argMap);
+    int thickness = jo_int(pStage, "thickness", CV_FILLED, model.argMap);
+
+    string contoursModelName = jo_string(pStage, "model", "", model.argMap);
+    json_t *pContoursModel = json_object_get(model.getJson(false), contoursModelName.c_str());
+
+    if (contoursModelName.empty()) {
+        errMsg = "model: expected name of stage with contours";
+    } else if (!json_is_object(pContoursModel)) {
+        errMsg = "Named stage is not in model";
+    }
+
+    json_t *pContours = NULL;
+    if (!errMsg) {
+        pContours = json_object_get(pContoursModel, "contours");
+        if (!json_is_array(pContours)) {
+            errMsg = "Expected array of contours";
+        }
+    }
+
+
+    
+    if (!errMsg) {
+        size_t i;
+        json_t *pContourJson;
+        vector<vector<Point> > contours;  
+
+        json_array_foreach(pContours, i, pContourJson) {
+            size_t j;
+            json_t *pointJson;
+            vector<Point> contour;
+            json_array_foreach(pContourJson, j, pointJson) {
+                contour.push_back(Point(jo_int(pointJson, "x", SHRT_MAX, model.argMap),
+                                        jo_int(pointJson, "y", SHRT_MAX, model.argMap))
+                                 );
+            }
+            contours.push_back(contour);
+        }
+
+        drawContours(model.image, contours, index, color, thickness);
+    }
+
+    return stageOK("apply_drawContours(%s) %s", errMsg, pStage, pStageModel);
+}
+
 
 bool Pipeline::apply_drawRects(json_t *pStage, json_t *pStageModel, Model &model) {
     const char *errMsg = NULL;
@@ -932,6 +1152,25 @@ bool Pipeline::apply_blur(json_t *pStage, json_t *pStageModel, Model &model) {
     }
 
     return stageOK("apply_blur(%s) %s", errMsg, pStage, pStageModel);
+}
+
+bool Pipeline::apply_GaussianBlur(json_t *pStage, json_t *pStageModel, Model &model) {
+    validateImage(model.image);
+    const char *errMsg = NULL;
+    int width = jo_int(pStage, "ksize.width", 3, model.argMap);
+    int height = jo_int(pStage, "ksize.height", 3, model.argMap);
+    double sigmaX = jo_double(pStage, "sigmaX", 0, model.argMap);
+    double sigmaY = jo_double(pStage, "sigmaY", 0, model.argMap);
+
+    if (width <= 0 || height <= 0) {
+        errMsg = "expected 0<width and 0<height";
+    }
+
+    if (!errMsg) {
+        GaussianBlur(model.image, model.image, Size(width,height), sigmaX, sigmaY);
+    }
+
+    return stageOK("apply_GaussianBlur(%s) %s", errMsg, pStage, pStageModel);
 }
 
 static void modelKeyPoints(json_t*pStageModel, const vector<KeyPoint> &keyPoints) {
@@ -1550,6 +1789,7 @@ bool Pipeline::apply_HoughCircles(json_t *pStage, json_t *pStageModel, Model &mo
     int diamMin = jo_int(pStage, "diamMin", 0, model.argMap);
     int diamMax = jo_int(pStage, "diamMax", 0, model.argMap);
     int showCircles = jo_int(pStage, "show", 0, model.argMap);
+    int thickness = jo_int(pStage, "thickness", 3, model.argMap);    
     // alg. parameters
     int bf_d = jo_int(pStage, "bilateralfilter_d", 15, model.argMap);
     double bf_sigmaColor = jo_double(pStage, "bilateralfilter_sigmaColor", 1000, model.argMap);
@@ -1574,6 +1814,7 @@ bool Pipeline::apply_HoughCircles(json_t *pStage, json_t *pStageModel, Model &mo
         vector<Circle> circles;
         HoughCircle hough_c(diamMin, diamMax);
         hough_c.setShowCircles(showCircles);
+        hough_c.setThickness(thickness);        
         hough_c.setFilterParams(bf_d, bf_sigmaColor, bf_sigmaSpace);
         hough_c.setHoughParams(hc_dp, hc_minDist, hc_param1, hc_param2);
         hough_c.scan(model.image, circles);
@@ -1755,6 +1996,8 @@ const char * Pipeline::dispatch(const char *pName, const char *pOp, json_t *pSta
         ok = apply_cout(pStage, pStageModel, model);
     } else if (strcmp(pOp, "crop")==0) {
         ok = apply_crop(pStage, pStageModel, model);
+    } else if (strcmp(pOp, "createMarkTemplate")==0) {
+        ok = apply_createMarkTemplate(pStage, pStageModel, model);
     } else if (strcmp(pOp, "Canny")==0) {
         ok = apply_Canny(pStage, pStageModel, model);
     } else if (strcmp(pOp, "cvtColor")==0) {
@@ -1765,6 +2008,10 @@ const char * Pipeline::dispatch(const char *pName, const char *pOp, json_t *pSta
         ok = apply_dftSpectrum(pStage, pStageModel, model);
     } else if (strcmp(pOp, "dilate")==0) {
         ok = apply_dilate(pStage, pStageModel, model);
+    } else if (strcmp(pOp, "drawCircles")==0) {
+        ok = apply_drawCircles(pStage, pStageModel, model);
+    } else if (strcmp(pOp, "drawContours")==0) {
+        ok = apply_drawContours(pStage, pStageModel, model);
     } else if (strcmp(pOp, "drawKeypoints")==0) {
         ok = apply_drawKeypoints(pStage, pStageModel, model);
     } else if (strcmp(pOp, "drawRects")==0) {
@@ -1773,8 +2020,12 @@ const char * Pipeline::dispatch(const char *pName, const char *pOp, json_t *pSta
         ok = apply_equalizeHist(pStage, pStageModel, model);
     } else if (strcmp(pOp, "erode")==0) {
         ok = apply_erode(pStage, pStageModel, model);
+    } else if (strcmp(pOp, "findContours")==0) {
+        ok = apply_findContours(pStage, pStageModel, model);
     } else if (strcmp(pOp, "FireSight")==0) {
         ok = apply_FireSight(pStage, pStageModel, model);
+    } else if (strcmp(pOp, "GaussianBlur")==0) {
+        ok = apply_GaussianBlur(pStage, pStageModel, model);
     } else if (strcmp(pOp, "HoleRecognizer")==0) {
         ok = apply_HoleRecognizer(pStage, pStageModel, model);
     } else if (strcmp(pOp, "HoughCircles")==0) {
@@ -1849,4 +2100,25 @@ const char * Pipeline::dispatch(const char *pName, const char *pOp, json_t *pSta
     }
 
     return errMsg;
+}
+
+const char *process(char *image, int width, int height, const char *pipelineJson)
+{
+    Mat matImage(height, width, CV_8UC3, image);
+   
+    Pipeline pipeline(pipelineJson);
+    ArgMap argMap;
+    json_t *pModel = pipeline.process(matImage, argMap);
+    char *pModelStr = json_dumps(pModel, JSON_PRESERVE_ORDER|JSON_COMPACT|JSON_INDENT(2));
+    json_decref(pModel);
+
+    return pModelStr;
+}
+
+extern "C"
+{
+    extern const char *cffi_process(char *image, int width, int height, const char *pipelineJson)
+    {
+        return process(image, width, height, pipelineJson);
+    }
 }
